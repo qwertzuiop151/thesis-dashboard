@@ -240,6 +240,84 @@
     pointer-events: none;
   }
   .save-indicator.show { opacity: 1; }
+  .save-indicator.syncing { background: var(--yellow); }
+  .save-indicator.error { background: var(--red); color: white; }
+
+  /* Sync status */
+  .sync-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 16px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 16px;
+    font-size: 0.82em;
+    color: var(--muted);
+  }
+  .sync-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 6px;
+  }
+  .sync-dot.ok { background: var(--green); }
+  .sync-dot.pending { background: var(--yellow); }
+  .sync-dot.off { background: var(--red); }
+  .sync-btn {
+    background: var(--border);
+    border: none;
+    color: var(--text);
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9em;
+  }
+  .sync-btn:hover { background: var(--muted); }
+
+  /* Token modal */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 100;
+    justify-content: center;
+    align-items: center;
+  }
+  .modal-overlay.show { display: flex; }
+  .modal {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    max-width: 480px;
+    width: 90%;
+  }
+  .modal h3 { margin-bottom: 12px; }
+  .modal p { font-size: 0.88em; color: var(--muted); margin-bottom: 14px; line-height: 1.5; }
+  .modal input {
+    width: 100%;
+    padding: 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-family: monospace;
+    font-size: 0.9em;
+    margin-bottom: 12px;
+  }
+  .modal-buttons { display: flex; gap: 8px; justify-content: flex-end; }
+  .modal-buttons button {
+    padding: 8px 16px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .btn-primary { background: var(--green); color: #000; }
+  .btn-secondary { background: var(--border); color: var(--text); }
 </style>
 </head>
 <body>
@@ -266,12 +344,43 @@
 
 <div class="phases" id="phases"></div>
 
+<div class="sync-bar" id="syncBar">
+  <div>
+    <span class="sync-dot off" id="syncDot"></span>
+    <span id="syncStatus">Sync nicht konfiguriert</span>
+  </div>
+  <div>
+    <button class="sync-btn" onclick="manualSync()" title="Jetzt synchronisieren">Sync</button>
+    <button class="sync-btn" onclick="showTokenModal()" title="Token konfigurieren">Token</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="tokenModal">
+  <div class="modal">
+    <h3>GitHub Token konfigurieren</h3>
+    <p>Erstelle einen <b>Fine-grained Personal Access Token</b> auf
+    github.com/settings/tokens mit <b>Gist read/write</b> Berechtigung.
+    Der Token wird nur lokal in deinem Browser gespeichert.</p>
+    <input type="password" id="tokenInput" placeholder="github_pat_...">
+    <div class="modal-buttons">
+      <button class="btn-secondary" onclick="closeTokenModal()">Abbrechen</button>
+      <button class="btn-primary" onclick="saveToken()">Speichern + Sync</button>
+    </div>
+  </div>
+</div>
+
 <div class="save-indicator" id="saveIndicator">Gespeichert</div>
 
 <script>
 const DEADLINE = new Date('2026-05-19T23:59:59');
 const TURKEY_START = new Date('2026-04-24');
 const TURKEY_END = new Date('2026-05-04');
+const GIST_ID = '44bead719e4bc0c10651446a12decd3d';
+const STORAGE_KEY = 'thesis_dashboard_v1';
+const TOKEN_KEY = 'thesis_dashboard_token';
+
+let syncInFlight = false;
+let syncDebounce = null;
 
 const phases = [
   {
@@ -408,39 +517,167 @@ const phases = [
 ];
 
 // --- State Management ---
-const STORAGE_KEY = 'thesis_dashboard_v1';
 
-function loadState() {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      const state = JSON.parse(saved);
-      phases.forEach(phase => {
-        if (state[phase.id]) {
-          phase.tasks.forEach((task, i) => {
-            if (state[phase.id][i] !== undefined) {
-              task.done = state[phase.id][i];
-            }
-          });
-        }
-      });
-    }
-  } catch(e) {}
-}
-
-function saveState() {
+function getState() {
   const state = {};
   phases.forEach(phase => {
     state[phase.id] = phase.tasks.map(t => t.done);
   });
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  showSaveIndicator();
+  state._ts = Date.now();
+  return state;
 }
 
-function showSaveIndicator() {
+function applyState(state) {
+  phases.forEach(phase => {
+    if (state[phase.id]) {
+      phase.tasks.forEach((task, i) => {
+        if (state[phase.id][i] !== undefined) {
+          task.done = state[phase.id][i];
+        }
+      });
+    }
+  });
+}
+
+function loadLocal() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) applyState(JSON.parse(saved));
+  } catch(e) {}
+}
+
+function saveLocal() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(getState()));
+}
+
+function saveState() {
+  saveLocal();
+  showSaveIndicator('Gespeichert');
+  // Debounced cloud sync
+  clearTimeout(syncDebounce);
+  syncDebounce = setTimeout(() => pushToGist(), 1500);
+}
+
+function showSaveIndicator(msg, type) {
   const el = document.getElementById('saveIndicator');
-  el.classList.add('show');
-  setTimeout(() => el.classList.remove('show'), 1200);
+  el.textContent = msg || 'Gespeichert';
+  el.className = 'save-indicator show' + (type ? ' ' + type : '');
+  setTimeout(() => el.classList.remove('show'), 2000);
+}
+
+// --- Gist Sync ---
+
+function getToken() {
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+function updateSyncUI(status, text) {
+  const dot = document.getElementById('syncDot');
+  const label = document.getElementById('syncStatus');
+  dot.className = 'sync-dot ' + status;
+  label.textContent = text;
+}
+
+async function pushToGist() {
+  const token = getToken();
+  if (!token) return;
+  if (syncInFlight) return;
+  syncInFlight = true;
+  updateSyncUI('pending', 'Sync...');
+
+  try {
+    const state = getState();
+    const resp = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        files: { 'state.json': { content: JSON.stringify(state) } }
+      })
+    });
+    if (resp.ok) {
+      updateSyncUI('ok', 'Synchronisiert — ' + new Date().toLocaleTimeString());
+      showSaveIndicator('Cloud sync OK');
+    } else {
+      const err = await resp.json();
+      updateSyncUI('off', 'Sync-Fehler: ' + (err.message || resp.status));
+      showSaveIndicator('Sync-Fehler', 'error');
+    }
+  } catch(e) {
+    updateSyncUI('off', 'Sync-Fehler: ' + e.message);
+    showSaveIndicator('Sync-Fehler', 'error');
+  }
+  syncInFlight = false;
+}
+
+async function pullFromGist() {
+  const token = getToken();
+  if (!token) {
+    updateSyncUI('off', 'Kein Token — klicke "Token" zum Einrichten');
+    return;
+  }
+  updateSyncUI('pending', 'Lade...');
+
+  try {
+    const resp = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!resp.ok) {
+      updateSyncUI('off', 'Sync-Fehler: ' + resp.status);
+      return;
+    }
+    const gist = await resp.json();
+    const content = gist.files['state.json']?.content;
+    if (content && content !== '{}') {
+      const remote = JSON.parse(content);
+      const localStr = localStorage.getItem(STORAGE_KEY);
+      const local = localStr ? JSON.parse(localStr) : null;
+
+      // Use whichever is newer (by timestamp), or remote if no local
+      if (!local || (remote._ts && (!local._ts || remote._ts > local._ts))) {
+        applyState(remote);
+        saveLocal();
+        render();
+        updateSyncUI('ok', 'Synchronisiert — ' + new Date().toLocaleTimeString());
+      } else {
+        // Local is newer, push to remote
+        updateSyncUI('ok', 'Lokal aktueller — pushe...');
+        await pushToGist();
+      }
+    } else {
+      // Empty remote, push local state
+      updateSyncUI('ok', 'Erster Sync...');
+      await pushToGist();
+    }
+  } catch(e) {
+    updateSyncUI('off', 'Sync-Fehler: ' + e.message);
+  }
+}
+
+async function manualSync() {
+  await pullFromGist();
+}
+
+// --- Token Modal ---
+
+function showTokenModal() {
+  document.getElementById('tokenModal').classList.add('show');
+  const existing = getToken();
+  if (existing) document.getElementById('tokenInput').value = existing;
+}
+
+function closeTokenModal() {
+  document.getElementById('tokenModal').classList.remove('show');
+}
+
+async function saveToken() {
+  const token = document.getElementById('tokenInput').value.trim();
+  if (!token) return;
+  localStorage.setItem(TOKEN_KEY, token);
+  closeTokenModal();
+  await pullFromGist();
 }
 
 // --- Countdown ---
@@ -536,10 +773,16 @@ function toggleTask(phaseId, taskIndex, checked) {
 }
 
 // --- Init ---
-loadState();
+loadLocal();
 updateCountdown();
 render();
 setInterval(updateCountdown, 60000);
+
+// Pull from Gist on load
+pullFromGist().then(() => render());
+
+// Also sync periodically (every 5 min)
+setInterval(() => pullFromGist().then(() => render()), 5 * 60 * 1000);
 
 // Open phases that have incomplete tasks and are current
 const now = new Date();
