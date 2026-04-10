@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Thesis Dashboard — Mito Trafo</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --card: #161b22;
+    --border: #30363d;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --green: #3fb950;
+    --green-bg: #0d2818;
+    --yellow: #d29922;
+    --yellow-bg: #2d2000;
+    --red: #f85149;
+    --red-bg: #2d0a0a;
+    --blue: #58a6ff;
+    --blue-bg: #0c2d6b;
+    --purple: #bc8cff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 20px;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+
+  /* Header */
+  .header {
+    text-align: center;
+    margin-bottom: 30px;
+    padding: 20px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+  }
+  .header h1 { font-size: 1.5em; margin-bottom: 8px; }
+  .countdown {
+    font-size: 2.5em;
+    font-weight: bold;
+    color: var(--yellow);
+    margin: 10px 0;
+  }
+  .countdown.urgent { color: var(--red); }
+  .countdown.comfortable { color: var(--green); }
+  .progress-bar-container {
+    background: var(--border);
+    border-radius: 8px;
+    height: 24px;
+    margin: 15px 0 5px;
+    overflow: hidden;
+    position: relative;
+  }
+  .progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--green), var(--blue));
+    border-radius: 8px;
+    transition: width 0.5s ease;
+  }
+  .progress-label {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 0.85em;
+    font-weight: bold;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+  }
+  .stats {
+    display: flex;
+    justify-content: center;
+    gap: 30px;
+    margin-top: 12px;
+    font-size: 0.9em;
+    color: var(--muted);
+  }
+  .stats span { color: var(--text); font-weight: bold; }
+
+  /* Phase cards */
+  .phases { display: flex; flex-direction: column; gap: 16px; }
+  .phase {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .phase-header {
+    padding: 14px 18px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    user-select: none;
+  }
+  .phase-header:hover { background: rgba(255,255,255,0.03); }
+  .phase-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .phase-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1em;
+    flex-shrink: 0;
+  }
+  .phase-title { font-weight: 600; font-size: 1.05em; }
+  .phase-dates { font-size: 0.8em; color: var(--muted); }
+  .phase-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .phase-progress-mini {
+    width: 120px;
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .phase-progress-mini-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.3s;
+  }
+  .phase-pct { font-size: 0.85em; color: var(--muted); min-width: 36px; text-align: right; }
+  .phase-chevron {
+    color: var(--muted);
+    transition: transform 0.2s;
+    font-size: 0.8em;
+  }
+  .phase.open .phase-chevron { transform: rotate(90deg); }
+
+  .phase-body {
+    display: none;
+    padding: 0 18px 14px;
+  }
+  .phase.open .phase-body { display: block; }
+
+  /* Tasks */
+  .task {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .task:last-child { border-bottom: none; }
+  .task input[type="checkbox"] {
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+    flex-shrink: 0;
+    margin-top: 1px;
+    position: relative;
+    transition: all 0.15s;
+  }
+  .task input[type="checkbox"]:checked {
+    background: var(--green);
+    border-color: var(--green);
+  }
+  .task input[type="checkbox"]:checked::after {
+    content: '✓';
+    position: absolute;
+    top: -1px;
+    left: 3px;
+    font-size: 14px;
+    color: white;
+    font-weight: bold;
+  }
+  .task.done .task-text {
+    text-decoration: line-through;
+    color: var(--muted);
+  }
+  .task-text { font-size: 0.92em; line-height: 1.4; }
+  .task-tag {
+    font-size: 0.7em;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+    display: inline-block;
+    margin-left: 6px;
+    vertical-align: middle;
+  }
+  .tag-critical { background: var(--red-bg); color: var(--red); }
+  .tag-important { background: var(--yellow-bg); color: var(--yellow); }
+  .tag-nice { background: var(--blue-bg); color: var(--blue); }
+
+  /* Turkey overlay */
+  .turkey-banner {
+    background: linear-gradient(90deg, var(--yellow-bg), var(--card));
+    border: 1px solid var(--yellow);
+    border-radius: 8px;
+    padding: 10px 16px;
+    margin-bottom: 16px;
+    font-size: 0.9em;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .turkey-banner .icon { font-size: 1.3em; }
+
+  /* Notes */
+  .note {
+    background: var(--blue-bg);
+    border-left: 3px solid var(--blue);
+    padding: 10px 14px;
+    margin: 10px 0;
+    border-radius: 0 6px 6px 0;
+    font-size: 0.85em;
+    color: var(--blue);
+  }
+
+  /* Save indicator */
+  .save-indicator {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: var(--green);
+    color: #000;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.85em;
+    opacity: 0;
+    transition: opacity 0.3s;
+    pointer-events: none;
+  }
+  .save-indicator.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Thesis: Novel approach towards plant mitochondrial transformation</h1>
+  <div>Abgabe: 19.05.2026</div>
+  <div class="countdown" id="countdown"></div>
+  <div class="progress-bar-container">
+    <div class="progress-bar" id="totalProgress"></div>
+    <div class="progress-label" id="totalLabel"></div>
+  </div>
+  <div class="stats">
+    <div><span id="doneTasks">0</span> / <span id="totalTasks">0</span> Tasks erledigt</div>
+    <div>|</div>
+    <div>Effektive Tage: <span id="effectiveDays"></span></div>
+  </div>
+</div>
+
+<div class="turkey-banner">
+  <div class="icon">&#9992;</div>
+  <div>Tuerkei 24.04. - ~04.05. — Reduzierte Kapazitaet. Discussion-Notizen destillieren (geht ohne Labor/Daten).</div>
+</div>
+
+<div class="phases" id="phases"></div>
+
+<div class="save-indicator" id="saveIndicator">Gespeichert</div>
+
+<script>
+const DEADLINE = new Date('2026-05-19T23:59:59');
+const TURKEY_START = new Date('2026-04-24');
+const TURKEY_END = new Date('2026-05-04');
+
+const phases = [
+  {
+    id: 'intro',
+    title: 'Introduction ueberarbeiten',
+    dates: '10.04. - 17.04.',
+    color: '#58a6ff',
+    tasks: [
+      { text: 'REVIEW-Kommentare abarbeiten (Typos, Faktenfehler, Sprache)', tag: 'critical', done: false },
+      { text: '"tobacco edge" → "tobacco etch" + alle Faktenfehler fixen', tag: 'critical', done: false },
+      { text: 'Homoplasmy-Widerspruch aufloesen (MSH1 vs. stochastische Segregation)', tag: 'critical', done: false },
+      { text: 'nad9 Knockout-Phaenotyp benennen und beschreiben', tag: 'critical', done: false },
+      { text: '"Warum Rep?" — Begruendung einfuegen (2-3 Saetze)', tag: 'important', done: false },
+      { text: 'Fehlende Zitationen ergaenzen (CoRR, Genomkopien, TEV, T7)', tag: 'important', done: false },
+      { text: 'TrmA/RNA-Alternative erwaehnen (2-3 Saetze)', tag: 'important', done: false },
+      { text: 'GUS/Kodon-Toxizitaet Absatz einfuegen (~100-150w)', tag: 'important', done: false },
+      { text: 'Section 1 (Plant GE) kuerzen: ~385w → ~200w', tag: 'important', done: false },
+      { text: 'Plastid-Sektion kuerzen: ~535w → ~250w', tag: 'important', done: false },
+      { text: 'Base Editing Absatz entfernen oder verschieben', tag: 'nice', done: false },
+      { text: 'Approach umschreiben: Konzept-Level statt Mechanismus-Detail', tag: 'important', done: false },
+      { text: 'Aim als falsifizierbare Vorhersagen formulieren', tag: 'nice', done: false },
+      { text: 'Potential Applications nach Aim verschieben oder in Discussion', tag: 'nice', done: false },
+      { text: '1.0-Restructuring: Narrative straffen, Gap-Statement schaerfen', tag: 'nice', done: false },
+    ]
+  },
+  {
+    id: 'methods',
+    title: 'Methods',
+    dates: '11.04. - 18.04.',
+    color: '#bc8cff',
+    tasks: [
+      { text: 'Aktuellen Stand pruefen — was steht schon?', tag: 'critical', done: false },
+      { text: 'Plasmid-Tabelle (verwendete Konstrukte)', tag: 'important', done: false },
+      { text: 'Primer-Tabelle (verwendete Oligos)', tag: 'important', done: false },
+      { text: 'Klonierungsmethoden beschreiben', tag: 'important', done: false },
+      { text: 'Agrobakterien-Infiltration Protokoll', tag: 'important', done: false },
+      { text: 'Konfokalmikroskopie Protokoll', tag: 'important', done: false },
+      { text: 'RNA-Extraktion + RT-PCR + Nested PCR', tag: 'important', done: false },
+      { text: 'Sequenzierung + Editing-Analyse', tag: 'important', done: false },
+      { text: 'GUS-spezifische Methoden (Klonierungsvarianten, tRNA-Rescue)', tag: 'nice', done: false },
+    ]
+  },
+  {
+    id: 'results-shuttle',
+    title: 'Results — Shuttle + DNA-Import',
+    dates: '14.04. - 21.04.',
+    color: '#3fb950',
+    tasks: [
+      { text: 'Konfokaldaten aufbereiten (Figures: GFP/RFP Lokalisierung)', tag: 'critical', done: false },
+      { text: 'PoC Results schreiben: Shuttle-Lokalisierung', tag: 'critical', done: false },
+      { text: 'Rep-Shuttle Lokalisierung beschreiben', tag: 'important', done: false },
+      { text: 'Negative Editing-Ergebnisse berichten (mit pos. Kontrollen)', tag: 'critical', done: false },
+      { text: 'TrmA/RNA-Cargo Results (falls Daten vorhanden)', tag: 'nice', done: false },
+      { text: 'Figures finalisieren + Legenden schreiben', tag: 'important', done: false },
+    ]
+  },
+  {
+    id: 'results-gus',
+    title: 'Results — GUS-Projekt',
+    dates: '25.04. - 04.05. (Tuerkei)',
+    color: '#d29922',
+    tasks: [
+      { text: 'GUS-Daten fuer DNAI-Analyse zusammenstellen', tag: 'critical', done: false },
+      { text: 'DNAI Muster-Analyse durchfuehren lassen', tag: 'important', done: false },
+      { text: 'Volllaenge-Toxizitaet beschreiben', tag: 'important', done: false },
+      { text: 'Truncated variants + Reading-Frame-Ergebnisse', tag: 'important', done: false },
+      { text: 'Regulatorische Elemente Ergebnisse', tag: 'important', done: false },
+      { text: 'tRNA-Rescue Ergebnisse', tag: 'important', done: false },
+      { text: 'RBS prediction Ergebnisse', tag: 'nice', done: false },
+      { text: 'Ergebnis-Tabelle/Matrix erstellen', tag: 'important', done: false },
+    ]
+  },
+  {
+    id: 'discussion',
+    title: 'Discussion',
+    dates: '28.04. - 10.05.',
+    color: '#f0883e',
+    tasks: [
+      { text: 'KERN: "Warum kein DNA-Import?" — 8 Hypothesen systematisch', tag: 'critical', done: false },
+      { text: 'Rep/RepA Design-Problem: ~1 Absatz (nicht Laborbuch-Stil)', tag: 'critical', done: false },
+      { text: 'Shuttle-Design Validierung + Subcellular Localization', tag: 'important', done: false },
+      { text: 'Rep-Pleiotropie: ~1 Absatz (Probleme + Loesungen)', tag: 'important', done: false },
+      { text: 'Feldvergleich: Biolistics / Peptid-Delivery / Koulintchenko (~1 Seite)', tag: 'critical', done: false },
+      { text: 'GUS Discussion: Muster-Interpretation (nach DNAI-Analyse)', tag: 'important', done: false },
+      { text: 'RNA Cargo Discussion (TrmA/T7)', tag: 'nice', done: false },
+      { text: 'Spezies-Unabhaengigkeit prominent positionieren', tag: 'important', done: false },
+    ]
+  },
+  {
+    id: 'outlook',
+    title: 'Outlook',
+    dates: '08.05. - 12.05.',
+    color: '#bc8cff',
+    tasks: [
+      { text: 'Top 5 naechste Schritte (intronloses Rep, Pull-down, Amplicon-Seq, cTP, stabile Linien)', tag: 'critical', done: false },
+      { text: 'Langfristige Perspektiven in 1 Absatz (episomale Maintenance, mt-RCR, CRISPR-in-Mitos)', tag: 'important', done: false },
+      { text: 'PhD-Koeder kurz halten (2-3 Saetze pro Idee, Elaboration im Gespraech)', tag: 'nice', done: false },
+    ]
+  },
+  {
+    id: 'final',
+    title: 'Finalisierung',
+    dates: '12.05. - 19.05.',
+    color: '#f85149',
+    tasks: [
+      { text: 'Abstract schreiben', tag: 'critical', done: false },
+      { text: 'Zusammenfassung (deutsch) schreiben', tag: 'critical', done: false },
+      { text: 'Acknowledgements', tag: 'important', done: false },
+      { text: 'Abkuerzungsverzeichnis generieren', tag: 'important', done: false },
+      { text: 'Alle Referenzen pruefen (MISSING FROM BIB fixen)', tag: 'critical', done: false },
+      { text: 'Gesamttext Korrekturlesen (Konsistenz, Terminologie)', tag: 'critical', done: false },
+      { text: 'Figures: Nummerierung, Reihenfolge, Legenden', tag: 'important', done: false },
+      { text: 'Formatting-Check (Seitenzahlen, Layout)', tag: 'important', done: false },
+      { text: 'Draft an Joachim schicken (spaetestens 12.05.!)', tag: 'critical', done: false },
+      { text: 'Betreuer-Feedback einarbeiten', tag: 'important', done: false },
+      { text: 'AI Usage Log finalisieren', tag: 'important', done: false },
+      { text: 'ABGABE 19.05.2026', tag: 'critical', done: false },
+    ]
+  },
+  {
+    id: 'pre-turkey',
+    title: 'VOR Tuerkei erledigen (bis 23.04.)',
+    dates: 'Deadline: 23.04.',
+    color: '#f85149',
+    tasks: [
+      { text: 'VPS ThesisCompanion updaten (CLAUDE.md + Memory sync)', tag: 'important', done: false },
+      { text: 'Letzte Experimente: Agrobakterien + Infiltration + Ernte', tag: 'critical', done: false },
+      { text: 'Introduction REVIEW-Kommentare abgearbeitet', tag: 'critical', done: false },
+      { text: 'Results Shuttle geschrieben (Konfokaldaten + neg. Editing)', tag: 'critical', done: false },
+      { text: 'Methods-Stand gecheckt und Luecken identifiziert', tag: 'important', done: false },
+      { text: 'GUS-Daten fuer DNAI bereit', tag: 'important', done: false },
+    ]
+  }
+];
+
+// --- State Management ---
+const STORAGE_KEY = 'thesis_dashboard_v1';
+
+function loadState() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      const state = JSON.parse(saved);
+      phases.forEach(phase => {
+        if (state[phase.id]) {
+          phase.tasks.forEach((task, i) => {
+            if (state[phase.id][i] !== undefined) {
+              task.done = state[phase.id][i];
+            }
+          });
+        }
+      });
+    }
+  } catch(e) {}
+}
+
+function saveState() {
+  const state = {};
+  phases.forEach(phase => {
+    state[phase.id] = phase.tasks.map(t => t.done);
+  });
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  showSaveIndicator();
+}
+
+function showSaveIndicator() {
+  const el = document.getElementById('saveIndicator');
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 1200);
+}
+
+// --- Countdown ---
+function updateCountdown() {
+  const now = new Date();
+  const diff = DEADLINE - now;
+  const days = Math.ceil(diff / (1000*60*60*24));
+
+  const el = document.getElementById('countdown');
+  el.textContent = `${days} Tage`;
+  el.className = 'countdown' + (days <= 7 ? ' urgent' : days <= 14 ? '' : ' comfortable');
+
+  // Effective days (subtract ~5 for Turkey reduced capacity)
+  const turkeyDays = 7; // ~10 days Turkey, ~7 effectively lost
+  let effective = days - turkeyDays;
+  if (now > TURKEY_END) effective = days;
+  document.getElementById('effectiveDays').textContent = Math.max(0, effective);
+}
+
+// --- Render ---
+function render() {
+  const container = document.getElementById('phases');
+  container.innerHTML = '';
+
+  let totalDone = 0, totalAll = 0;
+
+  phases.forEach(phase => {
+    const done = phase.tasks.filter(t => t.done).length;
+    const total = phase.tasks.length;
+    totalDone += done;
+    totalAll += total;
+    const pct = total > 0 ? Math.round(done/total*100) : 0;
+
+    const div = document.createElement('div');
+    div.className = 'phase';
+    div.innerHTML = `
+      <div class="phase-header" onclick="togglePhase('${phase.id}')">
+        <div class="phase-left">
+          <div class="phase-icon" style="background:${phase.color}22;color:${phase.color}">
+            ${pct === 100 ? '&#10003;' : done + '/' + total}
+          </div>
+          <div>
+            <div class="phase-title">${phase.title}</div>
+            <div class="phase-dates">${phase.dates}</div>
+          </div>
+        </div>
+        <div class="phase-right">
+          <div class="phase-progress-mini">
+            <div class="phase-progress-mini-fill" style="width:${pct}%;background:${phase.color}"></div>
+          </div>
+          <div class="phase-pct">${pct}%</div>
+          <div class="phase-chevron">&#9654;</div>
+        </div>
+      </div>
+      <div class="phase-body" id="body-${phase.id}">
+        ${phase.tasks.map((task, i) => `
+          <div class="task ${task.done ? 'done' : ''}" id="task-${phase.id}-${i}">
+            <input type="checkbox" ${task.done ? 'checked' : ''}
+              onchange="toggleTask('${phase.id}', ${i}, this.checked)">
+            <div class="task-text">
+              ${task.text}
+              ${task.tag ? `<span class="task-tag tag-${task.tag}">${task.tag.toUpperCase()}</span>` : ''}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+    container.appendChild(div);
+  });
+
+  // Total progress
+  const totalPct = totalAll > 0 ? Math.round(totalDone/totalAll*100) : 0;
+  document.getElementById('totalProgress').style.width = totalPct + '%';
+  document.getElementById('totalLabel').textContent = totalPct + '% abgeschlossen';
+  document.getElementById('doneTasks').textContent = totalDone;
+  document.getElementById('totalTasks').textContent = totalAll;
+}
+
+function togglePhase(id) {
+  const phase = document.querySelector(`#body-${id}`).parentElement;
+  phase.classList.toggle('open');
+}
+
+function toggleTask(phaseId, taskIndex, checked) {
+  const phase = phases.find(p => p.id === phaseId);
+  phase.tasks[taskIndex].done = checked;
+  saveState();
+  render();
+  // Re-open the phase
+  setTimeout(() => {
+    document.querySelector(`#body-${phaseId}`).parentElement.classList.add('open');
+  }, 10);
+}
+
+// --- Init ---
+loadState();
+updateCountdown();
+render();
+setInterval(updateCountdown, 60000);
+
+// Open phases that have incomplete tasks and are current
+const now = new Date();
+if (now < new Date('2026-04-24')) {
+  ['intro', 'methods', 'results-shuttle', 'pre-turkey'].forEach(id => {
+    document.querySelector(`#body-${id}`)?.parentElement.classList.add('open');
+  });
+} else {
+  ['results-gus', 'discussion'].forEach(id => {
+    document.querySelector(`#body-${id}`)?.parentElement.classList.add('open');
+  });
+}
+</script>
+</body>
+</html>
